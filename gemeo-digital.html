@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gémeo Digital - Miguel Rodrigues</title>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
+    <style>
+        :root {
+            --bg-app: #fcfcfc;
+            --bg-sidebar: #ffffff;
+            --border-fine: #e5e5e5;
+            --text-main: #111111;
+            --text-muted: #8e8e93;
+            --color-escrita: #111111;
+            --color-aulas: #777777;
+            --color-cst: #9e2a2b;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .app-container { display: flex; width: 100vw; height: 100vh; position: relative; }
+
+        .sidebar {
+            width: 240px; height: 100%; background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-fine);
+            display: flex; flex-direction: column; justify-content: space-between;
+            box-sizing: border-box; z-index: 10; flex-shrink: 0;
+        }
+        .brand {
+            padding: 25px 24px; font-size: 11px; font-weight: 700; letter-spacing: 2px;
+            text-transform: uppercase; border-bottom: 1px solid var(--border-fine);
+        }
+        .silo-menu { list-style: none; padding: 0; margin: 0; }
+        .silo-item {
+            padding: 16px 24px; font-size: 13px; color: var(--text-muted); font-weight: 500;
+            border-bottom: 1px solid var(--border-fine);
+        }
+        .silo-item.active { color: var(--text-main); font-weight: 600; background: #f5f5f7; }
+
+        .cluster-canvas { flex-grow: 1; height: 100%; background: #ffffff; position: relative; }
+
+        .editor-panel {
+            width: 0px; height: 100%; background: var(--bg-sidebar);
+            border-left: 0 solid var(--border-fine);
+            transition: width 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            display: flex; flex-direction: column; box-sizing: border-box;
+            position: relative; z-index: 5; overflow: hidden; flex-shrink: 0;
+        }
+        .editor-panel.open { width: 580px; border-left: 1px solid var(--border-fine); }
+
+        .editor-header {
+            height: 60px; border-bottom: 1px solid var(--border-fine);
+            display: flex; align-items: center; justify-content: space-between; padding: 0 30px;
+            flex-shrink: 0;
+        }
+        .editor-content { padding: 45px 50px; overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; }
+
+        .doc-title {
+            font-size: 20px; font-weight: 700; border: none; width: 100%; outline: none;
+            padding-bottom: 20px; margin-bottom: 25px; letter-spacing: -0.5px;
+            border-bottom: 1px solid var(--border-fine);
+        }
+        .doc-body {
+            font-size: 15px; line-height: 1.8; outline: none; text-align: justify; color: #111111;
+            padding-bottom: 30px; margin-bottom: 30px; border-bottom: 1px solid var(--border-fine);
+        }
+
+        .scaffolding-list { display: flex; flex-direction: column; gap: 15px; }
+        .scaffolding-meta-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding-bottom: 12px; border-bottom: 1px dashed var(--border-fine); font-size: 12px;
+        }
+        .meta-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+        .meta-value { font-weight: 500; }
+
+        .node { cursor: pointer; }
+        .node-center { stroke: #ffffff; stroke-width: 2.5px; }
+        .node-leaf { stroke: #ffffff; stroke-width: 2px; }
+        .link { stroke: #111111; stroke-opacity: 0.06; stroke-width: 1.5px; }
+        .node-text { font-size: 11px; font-weight: 500; fill: var(--text-main); pointer-events: none; }
+
+        .btn-close {
+            background: transparent; border: 1px solid var(--text-main);
+            padding: 6px 14px; font-size: 11px; font-weight: 600; cursor: pointer;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .btn-close:hover { background: var(--text-main); color: #ffffff; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="sidebar">
+            <div>
+                <div class="brand">M. Rodrigues</div>
+                <ul class="silo-menu">
+                    <li class="silo-item active">1. Escrita</li>
+                    <li class="silo-item">2. Aulas</li>
+                    <li class="silo-item">3. Trabalho Artístico</li>
+                </ul>
+            </div>
+            <div style="padding: 25px 24px; font-size: 10px; color: var(--text-muted); letter-spacing: 0.5px; border-top: 1px solid var(--border-fine);">
+                SISTEMA AUTÓNOMO
+            </div>
+        </div>
+
+        <div class="cluster-canvas" id="cluster-zone"></div>
+
+        <div class="editor-panel" id="editor-zone">
+            <div class="editor-header">
+                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;" id="silo-indicator">FILA ATIVA</div>
+                <button class="btn-close" onclick="closeEditor()">Fechar</button>
+            </div>
+            <div class="editor-content">
+                <input type="text" class="doc-title" id="editor-title" value="">
+                <div class="doc-body" contenteditable="true" id="editor-body"></div>
+                <div class="scaffolding-list">
+                    <div class="scaffolding-meta-row">
+                        <span class="meta-label">Âncora de Origem</span>
+                        <span class="meta-value" id="meta-parent" style="font-weight:600;"></span>
+                    </div>
+                    <div class="scaffolding-meta-row">
+                        <span class="meta-label">Vetor Intersecção</span>
+                        <span class="meta-value" id="meta-intersection" style="color: var(--color-cst); font-weight:600;"></span>
+                    </div>
+                    <div class="scaffolding-meta-row" style="border-bottom: none;">
+                        <span class="meta-label">Estatuto de Dados</span>
+                        <span class="meta-value" style="color: var(--text-muted);">Soberania Fechada</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            const SIDEBAR = 240;
+            const PANEL = 580;
+
+            const clusterZone = document.getElementById("cluster-zone");
+            let height = clusterZone.clientHeight || window.innerHeight;
+
+            const graphData = {
+                nodes: [
+                    { id: "Silo Escrita", type: "center", color: "var(--color-escrita)" },
+                    { id: "Silo Aulas", type: "center", color: "var(--color-aulas)" },
+                    { id: "Silo Artístico (CST)", type: "center", color: "var(--color-cst)" },
+                    { id: "Abstract EJMAP", type: "leaf", color: "var(--color-escrita)", parent: "Silo Escrita", intersection: "Silo Artístico (CST) [91%]", content: "Este artigo propõe uma discussão em torno da visualidade contemporânea no cenário de transição para modelos de simulação algorítmica. O foco central reside na desestabilização do programa do aparelho, tal como formulado por Vilém Flusser, quando confrontado com a saturação de dados que caracteriza a cultura visual atual. Argumenta-se que o papel do operador e do observador já não se cumpre na mera submissão ao programa técnico, exigindo uma fratura somática na relação com o dispositivo." },
+                    { id: "Recensão Crítica", type: "leaf", color: "var(--color-escrita)", parent: "Silo Escrita", intersection: "Nenhum", content: "Notas de leitura sobre as condições materiais de receção e visualização na era dos ecrãs pretos e da dispersão cognitiva." },
+                    { id: "Sequenciação IADE", type: "leaf", color: "var(--color-aulas)", parent: "Silo Aulas", intersection: "Silo Escrita [40%]", content: "Planificação de exercícios de atrito visual e sequenciação narrativa para o laboratório de fotografia digital." },
+                    { id: "Imagens Interiores [CST]", type: "leaf", color: "var(--color-cst)", parent: "Silo Artístico (CST)", intersection: "Silo Escrita [75%]", content: "Registo documental focado no interior profundo de Portugal. Mapeamento visual da transição entre o idealismo dos anos 80 e a distopia cinzenta contemporânea." }
+                ],
+                links: [
+                    { source: "Abstract EJMAP", target: "Silo Escrita" },
+                    { source: "Recensão Crítica", target: "Silo Escrita" },
+                    { source: "Sequenciação IADE", target: "Silo Aulas" },
+                    { source: "Imagens Interiores [CST]", target: "Silo Artístico (CST)" },
+                    { source: "Abstract EJMAP", target: "Silo Artístico (CST)" }
+                ]
+            };
+
+            const svg = d3.select("#cluster-zone").append("svg").attr("width", "100%").attr("height", "100%");
+
+            const simulation = d3.forceSimulation(graphData.nodes)
+                .force("link", d3.forceLink(graphData.links).id(d => d.id).distance(110))
+                .force("charge", d3.forceManyBody().strength(-200))
+                .force("collision", d3.forceCollide().radius(45))
+                .force("center", d3.forceCenter((clusterZone.clientWidth || (window.innerWidth - SIDEBAR)) / 2, height / 2));
+
+            const link = svg.append("g").selectAll("line").data(graphData.links).enter().append("line").attr("class", "link");
+
+            const node = svg.append("g").selectAll("circle").data(graphData.nodes).enter().append("circle")
+                .attr("class", d => d.type === "center" ? "node node-center" : "node node-leaf")
+                .attr("r", d => d.type === "center" ? 14 : 7)
+                .attr("fill", d => d.color)
+                .on("click", (event, d) => {
+                    if (d.type === "leaf") {
+                        openEditor(d);
+                        d3.selectAll(".node-leaf").style("stroke", "#ffffff").style("stroke-width", "2px");
+                        d3.select(event.currentTarget).style("stroke", "#111111").style("stroke-width", "2.5px");
+                    }
+                });
+
+            const label = svg.append("g").selectAll("text").data(graphData.nodes).enter().append("text")
+                .attr("class", "node-text").attr("dx", 18).attr("dy", 4).text(d => d.id);
+
+            simulation.on("tick", () => {
+                link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                node.attr("cx", d => d.x).attr("cy", d => d.y);
+                label.attr("x", d => d.x).attr("y", d => d.y);
+            });
+
+            node.call(d3.drag()
+                .on("start", function(event, d) { if (!event.active) simulation.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
+                .on("drag", function(event, d) { d.fx = event.x; d.fy = event.y; })
+                .on("end", function(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+            );
+
+            // Recentra com base na largura REAL do canvas, medida depois da transição.
+            function recenter() {
+                height = clusterZone.clientHeight || window.innerHeight;
+                const w = clusterZone.clientWidth || (window.innerWidth - SIDEBAR);
+                simulation.force("center", d3.forceCenter(w / 2, height / 2));
+                simulation.alpha(0.3).restart();
+            }
+
+            window.openEditor = function(nodeData) {
+                document.getElementById("editor-title").value = nodeData.id;
+                document.getElementById("editor-body").innerText = nodeData.content;
+                document.getElementById("silo-indicator").innerText = "Fila Ativa: " + nodeData.parent;
+                document.getElementById("meta-parent").innerText = nodeData.parent;
+                document.getElementById("meta-intersection").innerText = nodeData.intersection;
+                document.getElementById("editor-zone").classList.add("open");
+                // espera o fim da transição CSS (0.4s) antes de medir e recentrar
+                setTimeout(recenter, 420);
+            };
+
+            window.closeEditor = function() {
+                document.getElementById("editor-zone").classList.remove("open");
+                d3.selectAll(".node-leaf").style("stroke", "#ffffff").style("stroke-width", "2px");
+                setTimeout(recenter, 420);
+            };
+
+            // mantém o cluster centrado se a janela / iframe mudar de tamanho
+            window.addEventListener("resize", recenter);
+        });
+    </script>
+</body>
+</html>
