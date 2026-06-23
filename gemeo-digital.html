@@ -60,7 +60,6 @@
         .cluster-canvas.linking .link-banner { display: block; }
         .editor-panel { width: 0px; height: 100%; background: var(--bg-sidebar); border-left: 0 solid var(--border-fine); transition: width 0.4s cubic-bezier(0.25, 1, 0.5, 1); display: flex; flex-direction: column; box-sizing: border-box; position: relative; z-index: 5; overflow: hidden; flex-shrink: 0; }
         .editor-panel.open { width: 580px; border-left: 1px solid var(--border-fine); }
-
         .silo-panel {
             width: 0px; height: 100%; background: var(--bg-sidebar);
             border-right: 0 solid var(--border-fine);
@@ -157,6 +156,12 @@
         .dialog-actions button { flex: 1; padding: 10px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
         .dlg-ok { background: var(--text-main); color: #fff; border: 1px solid var(--text-main); }
         .dlg-cancel { background: #fff; color: var(--text-main); border: 1px solid var(--border-fine); }
+        /* IA */
+        .ai-textarea { width: 100%; box-sizing: border-box; padding: 9px 11px; font-size: 13px; border: 1px solid var(--border-fine); font-family: inherit; outline: none; border-radius: 2px; resize: vertical; min-height: 80px; }
+        .ai-textarea:focus { border-color: var(--text-main); }
+        .ai-response { margin-top: 16px; padding: 12px; background: #f5f5f7; font-size: 13px; line-height: 1.7; border-radius: 2px; white-space: pre-wrap; display: none; max-height: 280px; overflow-y: auto; }
+        .ai-response.show { display: block; }
+        .ai-loading { color: var(--text-muted); font-style: italic; }
     </style>
 </head>
 <body>
@@ -174,6 +179,7 @@
                     <button class="action-btn" id="conjunto-btn" onclick="setFocus(null)"><span class="ic">&#9728;</span> Vista de conjunto</button>
                     <button class="action-btn" onclick="openNewNode()"><span class="ic">+</span> Novo nó</button>
                     <button class="action-btn" id="link-btn" onclick="toggleLinkMode()"><span class="ic">&#10230;</span> Ligar nós</button>
+                    <button class="action-btn" onclick="openAI()"><span class="ic">✦</span> Perguntar à IA</button>
                     <div class="action-row">
                         <button class="action-btn" onclick="exportData()"><span class="ic">&#8615;</span> Exportar</button>
                         <button class="action-btn" onclick="document.getElementById('import-file').click()"><span class="ic">&#8613;</span> Importar</button>
@@ -253,6 +259,18 @@
                 </div>
             </div>
         </div>
+        <div class="dialog-back" id="ai-dialog-back">
+            <div class="dialog" style="width: 440px;">
+                <h3>Perguntar à IA</h3>
+                <label>Pergunta</label>
+                <textarea class="ai-textarea" id="ai-input" placeholder="Ex: Que ligações faltam explorar? Que nó devo criar a seguir? Resume o silo de Escrita."></textarea>
+                <div class="ai-response" id="ai-response"></div>
+                <div class="dialog-actions">
+                    <button class="dlg-cancel" onclick="closeAIDialog()">Fechar</button>
+                    <button class="dlg-ok" id="ai-send-btn" onclick="sendAI()">Enviar</button>
+                </div>
+            </div>
+        </div>
     </div>
     <script>
     window.addEventListener('DOMContentLoaded', () => {
@@ -300,7 +318,8 @@
         };
         const STORE_BAK = "gemeo_v2_bak";
         const DRIVE_URL = "https://gemeo-servidor.vercel.app/api/dados";
-        let driveTimer = null, driveState = "idle"; // idle | saving | saved | error
+        const AI_URL = "https://gemeo-servidor.vercel.app/api/ai";
+        let driveTimer = null, driveState = "idle";
         function isValid(d) { return d && Array.isArray(d.nodes) && Array.isArray(d.links) && d.nodes.length > 0; }
         function loadBackups() { try { const r = localStorage.getItem(STORE_BAK); const a = r ? JSON.parse(r) : []; return Array.isArray(a) ? a : []; } catch(e){ return []; } }
 
@@ -350,7 +369,6 @@
             document.getElementById("save-txt").textContent = txt;
         }
         function refreshSaveLabel() {
-            // combina o estado local e o do Drive numa só mensagem
             if (localState === "error") { setSaveState("error", "Armazenamento local bloqueado"); return; }
             if (driveState === "saving") { setSaveState("dirty", "A guardar no Drive…"); return; }
             if (driveState === "error") { setSaveState("error", "Drive indisponível — guardado localmente"); return; }
@@ -372,14 +390,12 @@
             if (saveTimer) clearTimeout(saveTimer);
             saveTimer = setTimeout(() => {
                 const snapshot = stripData();
-                // 1) cópia local imediata
                 try {
                     localStorage.setItem(STORE_KEY, JSON.stringify(snapshot));
                     pushBackup(snapshot);
                     localState = "saved";
                 } catch(e) { localState = "error"; }
                 refreshSaveLabel();
-                // 2) gravação no Drive (com pequeno atraso adicional para agrupar alterações)
                 if (driveTimer) clearTimeout(driveTimer);
                 driveTimer = setTimeout(() => { driveSave(snapshot); }, 1200);
             }, 600);
@@ -518,7 +534,6 @@
         }
 
         function coexistOK() {
-            // só permite dois painéis (silo 420 + editor 580) se sobrar cluster legível (~280px)
             return window.innerWidth - SIDEBAR - 420 - 580 >= 280;
         }
         function availWidth() { return clusterZone.clientWidth || (window.innerWidth - SIDEBAR); }
@@ -544,7 +559,7 @@
                 const conf = data.links.filter(l=>{const a=l.source.id||l.source,b=l.target.id||l.target; return (a===n.id||b===n.id)&&l.provenance==="confirmed";}).length;
                 const row=document.createElement("div"); row.className="sp-node";
                 row.innerHTML='<span class="sp-node-name">'+n.label+'</span><span class="sp-node-meta">'+(conf>0?conf+' ●':'—')+'</span>';
-                row.onclick=()=>{ if(!coexistOK()){ /* ecrã estreito: editor substitui silo */ document.getElementById("silo-panel").classList.remove("open"); } openEditor(n.id); };
+                row.onclick=()=>{ if(!coexistOK()){ document.getElementById("silo-panel").classList.remove("open"); } openEditor(n.id); };
                 list.appendChild(row);
             });
             document.getElementById("silo-panel").classList.add("open");
@@ -743,6 +758,44 @@
         window.addEventListener("resize", recenter);
         window.openNewNode=openNewNode; window.closeDialog=closeDialog; window.confirmNewNode=confirmNewNode;
         window.toggleLinkMode=toggleLinkMode; window.closeEditor=closeEditor; window.deleteCurrentNode=deleteCurrentNode;
+
+        // --- IA ---
+        window.openAI = function() {
+            document.getElementById("ai-input").value = "";
+            const resp = document.getElementById("ai-response");
+            resp.className = "ai-response"; resp.textContent = "";
+            document.getElementById("ai-dialog-back").classList.add("show");
+            setTimeout(() => document.getElementById("ai-input").focus(), 50);
+        };
+        window.closeAIDialog = function() {
+            document.getElementById("ai-dialog-back").classList.remove("show");
+        };
+        window.sendAI = async function() {
+            const msg = document.getElementById("ai-input").value.trim();
+            if (!msg) return;
+            const btn = document.getElementById("ai-send-btn");
+            const resp = document.getElementById("ai-response");
+            btn.disabled = true; btn.textContent = "A pensar…";
+            resp.className = "ai-response show ai-loading"; resp.textContent = "A consultar a IA…";
+            try {
+                const r = await fetch(AI_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ mensagem: msg, contexto: stripData() })
+                });
+                const result = await r.json();
+                resp.className = "ai-response show";
+                resp.textContent = result.resposta || result.erro || "Sem resposta.";
+            } catch(e) {
+                resp.className = "ai-response show";
+                resp.textContent = "Erro de ligação: " + e.message;
+            }
+            btn.disabled = false; btn.textContent = "Enviar";
+        };
+        document.getElementById("ai-input").addEventListener("keydown", e => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) window.sendAI();
+        });
+
         buildSiloMenu(); buildSimulation(); render();
         document.getElementById("conjunto-btn").classList.add("armed");
         if (recoveredNote) {
@@ -752,8 +805,6 @@
             try { const snap = stripData(); localStorage.setItem(STORE_KEY, JSON.stringify(snap)); pushBackup(snap); localState="saved"; setSaveState("saved", "Guardado"); }
             catch(e){ localState="error"; setSaveState("error", "Armazenamento bloqueado — exporta!"); }
         }
-
-        // --- Ligação ao Drive: ler ao arranque ---
         setSaveState("dirty", "A ligar ao Drive…");
         (async function syncFromDrive(){
             try {
@@ -762,15 +813,12 @@
                     const localStr = JSON.stringify(stripData());
                     const remotoStr = JSON.stringify(remoto);
                     if (localStr !== remotoStr) {
-                        // O Drive tem uma versão diferente. Como é a fonte de verdade
-                        // partilhada entre dispositivos, adotamo-la.
                         data = remoto; activeNodeId = null;
                         svg.selectAll("*").remove(); buildSimulation(); render(); closeEditor();
                         try { localStorage.setItem(STORE_KEY, JSON.stringify(remoto)); pushBackup(remoto); } catch(e){}
                     }
                     driveState = "saved"; refreshSaveLabel();
                 } else {
-                    // Drive ainda não tem ficheiro: grava o estado atual lá pela primeira vez.
                     await driveSave(stripData());
                 }
             } catch(e) {
