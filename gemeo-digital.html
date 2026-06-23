@@ -16,6 +16,7 @@
             --color-aulas: #777777;
             --color-cst: #9e2a2b;
             --color-produtos: #5a6b5d;
+            --color-sondas: #b86e00;
         }
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100vh;
@@ -156,6 +157,29 @@
         .dialog-actions button { flex: 1; padding: 10px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
         .dlg-ok { background: var(--text-main); color: #fff; border: 1px solid var(--text-main); }
         .dlg-cancel { background: #fff; color: var(--text-main); border: 1px solid var(--border-fine); }
+        /* Sondas (Chamadas de Artigos) */
+        .node-sonda { cursor: pointer; }
+        .sonda-card { padding: 16px 0; border-bottom: 1px solid var(--border-fine); }
+        .sonda-card:last-child { border-bottom: none; }
+        .sonda-titulo { font-size: 14px; font-weight: 600; margin-bottom: 6px; color: var(--text-main); }
+        .sonda-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+        .sonda-prazo { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+        .sonda-prazo.urgente { color: var(--color-cst); font-weight: 700; }
+        .sonda-areas { font-size: 11px; color: var(--text-muted); }
+        .sonda-desc { font-size: 13px; line-height: 1.6; color: #333; margin-bottom: 8px; }
+        .sonda-conexao { font-size: 12px; line-height: 1.6; color: var(--text-muted); margin-bottom: 10px; font-style: italic; border-left: 2px solid var(--border-fine); padding-left: 10px; }
+        .sonda-btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+        .sonda-btn { padding: 5px 12px; font-size: 11px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; font-family: inherit; border-radius: 2px; }
+        .sonda-btn-preparar { background: var(--text-main); color: #fff; border: 1px solid var(--text-main); }
+        .sonda-btn-enviada { background: var(--color-produtos); color: #fff; border: 1px solid var(--color-produtos); }
+        .sonda-btn-rejeitar { background: transparent; border: 1px solid #ccc; color: var(--text-muted); }
+        .sonda-btn-rejeitar:hover { border-color: var(--color-cst); color: var(--color-cst); }
+        .sonda-status-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; flex-shrink: 0; }
+        .badge-pendente { color: #8a5800; background: #fff3d4; border: 1px solid #f0c060; }
+        .badge-ativa { color: #fff; background: var(--color-sondas); }
+        .sonda-link { font-size: 11px; color: var(--color-cst); text-decoration: none; font-weight: 500; }
+        .sonda-link:hover { text-decoration: underline; }
+        .sondas-empty { font-size: 13px; color: var(--text-muted); font-style: italic; text-align: center; padding: 40px 0; }
         /* IA */
         .ai-textarea { width: 100%; box-sizing: border-box; padding: 9px 11px; font-size: 13px; border: 1px solid var(--border-fine); font-family: inherit; outline: none; border-radius: 2px; resize: vertical; min-height: 80px; }
         .ai-textarea:focus { border-color: var(--text-main); }
@@ -259,6 +283,15 @@
                 </div>
             </div>
         </div>
+        <div class="dialog-back" id="sondas-dialog-back">
+            <div class="dialog" style="width: 640px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; padding: 28px; box-sizing: border-box;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-shrink: 0;">
+                    <h3 style="margin: 0;">⬡ Chamadas Ativas</h3>
+                    <button class="btn-close" onclick="closeSondasDialog()">Fechar</button>
+                </div>
+                <div id="sondas-list" style="overflow-y: auto; flex-grow: 1;"></div>
+            </div>
+        </div>
         <div class="dialog-back" id="ai-dialog-back">
             <div class="dialog" style="width: 440px;">
                 <h3>Perguntar à IA</h3>
@@ -281,7 +314,10 @@
             { id: "cst",       label: "3. Trabalho Artístico", color: "var(--color-cst)" },
             { id: "produtos",  label: "4. Produtos",           color: "var(--color-produtos)" }
         ];
-        const siloColor = id => (SILOS.find(s => s.id === id) || {}).color || "#999";
+        const siloColor = id => {
+            if (id === '__sonda__') return 'var(--color-sondas)';
+            return (SILOS.find(s => s.id === id) || {}).color || "#999";
+        };
         const siloLabel = id => (SILOS.find(s => s.id === id) || {}).label || id;
         const TAGS = {
             cat:  { title: "Categorias administrativas", fam: "fam-cat",  items: ["candidatura","prazo","publicação","ensino","exposição","financiamento"] },
@@ -319,6 +355,9 @@
         const STORE_BAK = "gemeo_v2_bak";
         const DRIVE_URL = "https://gemeo-servidor.vercel.app/api/dados";
         const AI_URL = "https://gemeo-servidor.vercel.app/api/ai";
+        const SONDAS_URL = "https://gemeo-servidor.vercel.app/api/sondas";
+        const SONDA_NODE = { id: '__sonda__', type: 'sonda', silo: '__sonda__', label: 'Chamadas' };
+        let sondasData = [];
         let driveTimer = null, driveState = "idle";
         function isValid(d) { return d && Array.isArray(d.nodes) && Array.isArray(d.links) && d.nodes.length > 0; }
         function loadBackups() { try { const r = localStorage.getItem(STORE_BAK); const a = r ? JSON.parse(r) : []; return Array.isArray(a) ? a : []; } catch(e){ return []; } }
@@ -423,8 +462,13 @@
             return data.nodes.filter(o => o.type==="leaf" && o.id!==nodeId && !linkExists(nodeId,o.id) && sharedTagCount(node,o)>0)
                 .map(o => ({ node:o, shared: sharedTagCount(node,o) })).sort((a,b)=>b.shared-a.shared);
         }
+        function nodesForSimulation() {
+            const hoje = new Date().toISOString().slice(0, 10);
+            const active = sondasData.filter(s => s.status !== 'enviada' && s.prazo >= hoje);
+            return active.length > 0 ? [...data.nodes, SONDA_NODE] : [...data.nodes];
+        }
         function buildSimulation() {
-            simulation = d3.forceSimulation(data.nodes)
+            simulation = d3.forceSimulation(nodesForSimulation())
                 .force("link", d3.forceLink(data.links).id(d=>d.id).distance(110))
                 .force("charge", d3.forceManyBody().strength(-220))
                 .force("collision", d3.forceCollide().radius(46))
@@ -480,10 +524,11 @@
                     return dimmedSilo(s.silo) && dimmedSilo(t.silo);
                 });
 
-            nodeSel = svg.selectAll("circle.node").data(data.nodes, d=>d.id);
+            const allNodes = nodesForSimulation();
+            nodeSel = svg.selectAll("circle.node").data(allNodes, d=>d.id);
             nodeSel.exit().remove();
             const nodeEnter = nodeSel.enter().append("circle")
-                .attr("r", d => d.type==="center" ? 14 : 7)
+                .attr("r", d => d.type==="center" ? 14 : d.type==="sonda" ? 12 : 7)
                 .on("click", onNodeClick)
                 .on("mouseover", (e,d)=>onNodeHover(d.silo))
                 .on("mouseout", ()=>onNodeHover(null))
@@ -492,18 +537,20 @@
                     .on("drag", (e,d)=>{ d.fx=e.x; d.fy=e.y; })
                     .on("end", (e,d)=>{ if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }));
             nodeSel = nodeEnter.merge(nodeSel);
-            nodeSel.attr("class", d => (d.type==="center" ? "node node-center" : "node node-leaf") + (dimmedSilo(d.silo) ? " dimmed" : ""))
-                   .attr("fill", d=>siloColor(d.silo))
-                   .style("stroke", d => d.id===activeNodeId ? "#111" : "#fff")
-                   .style("stroke-width", d => d.id===activeNodeId ? "3px" : (d.type==="center"?"2.5px":"2px"));
+            nodeSel.attr("class", d => d.type==="sonda" ? "node node-sonda" : (d.type==="center" ? "node node-center" : "node node-leaf") + (dimmedSilo(d.silo) ? " dimmed" : ""))
+                   .attr("fill", d => d.type==="sonda" ? 'var(--color-sondas)' : siloColor(d.silo))
+                   .attr("fill-opacity", d => d.type==="sonda" ? 0.15 : 1)
+                   .style("stroke", d => d.type==="sonda" ? "var(--color-sondas)" : d.id===activeNodeId ? "#111" : "#fff")
+                   .style("stroke-width", d => d.type==="sonda" ? "2px" : d.id===activeNodeId ? "3px" : (d.type==="center"?"2.5px":"2px"))
+                   .style("stroke-dasharray", d => d.type==="sonda" ? "5,3" : null);
 
-            labelSel = svg.selectAll("text.node-text").data(data.nodes, d=>d.id);
+            labelSel = svg.selectAll("text.node-text").data(allNodes, d=>d.id);
             labelSel.exit().remove();
             labelSel = labelSel.enter().append("text").attr("dx",18).attr("dy",4).merge(labelSel)
-                .attr("class", d => "node-text" + (dimmedSilo(d.silo) ? " dimmed" : ""))
+                .attr("class", d => "node-text" + (d.type==="sonda" ? "" : dimmedSilo(d.silo) ? " dimmed" : ""))
                 .text(d=>d.label);
 
-            simulation.nodes(data.nodes);
+            simulation.nodes(allNodes);
             simulation.force("link").links(data.links);
             simulation.alpha(0.3).restart();
         }
@@ -528,9 +575,13 @@
 
         function onNodeHover(silo) {
             if (linkMode) return;
-            nodeSel.classed("silo-hot", d => silo!==null && d.silo===silo)
-                   .attr("r", d => { const base = d.type==="center"?14:7; return (silo!==null && d.silo===silo) ? base*1.45 : base; });
-            labelSel.style("font-weight", d => (silo!==null && d.silo===silo) ? "700" : "500");
+            nodeSel.classed("silo-hot", d => silo!==null && d.silo===silo && d.type!=="sonda")
+                   .attr("r", d => {
+                       if (d.type==="sonda") return 12;
+                       const base = d.type==="center"?14:7;
+                       return (silo!==null && d.silo===silo) ? base*1.45 : base;
+                   });
+            labelSel.style("font-weight", d => (silo!==null && d.silo===silo && d.type!=="sonda") ? "700" : "500");
         }
 
         function coexistOK() {
@@ -576,6 +627,7 @@
         window.closeSiloPanel = closeSiloPanel; window.newNodeInSilo = newNodeInSilo;
         function onNodeClick(event, d) {
             if (linkMode) { handleLinkClick(d); return; }
+            if (d.type === "sonda") { openSondasDialog(); return; }
             if (d.type === "leaf") openEditor(d.id);
         }
         function toggleLinkMode() {
@@ -740,6 +792,93 @@
             };
             reader.readAsText(file);
         };
+        // --- Sondas (Chamadas de Artigos / CFPs) ---
+        async function loadSondas() {
+            try {
+                const resp = await fetch(SONDAS_URL, { method: "GET" });
+                const r = await resp.json();
+                if (r && r.existe && r.dados && Array.isArray(r.dados.sondas)) {
+                    const hoje = new Date().toISOString().slice(0, 10);
+                    const todas = r.dados.sondas;
+                    // Auto-remove calls expiradas (não enviadas e prazo passado)
+                    sondasData = todas.filter(s => s.status === 'enviada' || s.prazo >= hoje);
+                    if (sondasData.length < todas.length) saveSondas();
+                } else {
+                    sondasData = [];
+                }
+                render(); // Atualiza a visibilidade do nó Sondas
+            } catch(e) { console.warn("Sondas indisponíveis:", e); }
+        }
+        async function saveSondas() {
+            try {
+                await fetch(SONDAS_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sondas: sondasData })
+                });
+            } catch(e) { console.warn("Erro ao guardar sondas:", e); }
+        }
+        window.openSondasDialog = function() {
+            renderSondasDialog();
+            document.getElementById("sondas-dialog-back").classList.add("show");
+        };
+        window.closeSondasDialog = function() {
+            document.getElementById("sondas-dialog-back").classList.remove("show");
+        };
+        function renderSondasDialog() {
+            const list = document.getElementById("sondas-list");
+            const hoje = new Date().toISOString().slice(0, 10);
+            const active = sondasData.filter(s => s.status !== 'enviada' && s.prazo >= hoje);
+            if (active.length === 0) {
+                list.innerHTML = '<div class="sondas-empty">Sem chamadas ativas de momento.</div>';
+                return;
+            }
+            list.innerHTML = '';
+            active.forEach(s => {
+                const dias = Math.ceil((new Date(s.prazo) - new Date(hoje)) / 86400000);
+                const urgente = dias <= 14;
+                const badge = s.status === 'ativa'
+                    ? '<span class="sonda-status-badge badge-ativa">Em preparação</span>'
+                    : '<span class="sonda-status-badge badge-pendente">Pendente</span>';
+                const btnPreparar = s.status === 'pendente'
+                    ? `<button class="sonda-btn sonda-btn-preparar" onclick="ativarSonda('${s.id}')">Preparar</button>`
+                    : '';
+                const urlLink = s.url
+                    ? `<a class="sonda-link" href="${s.url}" target="_blank">↗ Ver chamada</a>`
+                    : '';
+                const card = document.createElement("div");
+                card.className = "sonda-card";
+                card.innerHTML = `
+                    <div class="sonda-titulo">${s.titulo}</div>
+                    <div class="sonda-meta">
+                        ${badge}
+                        <span class="sonda-prazo${urgente ? ' urgente' : ''}">Prazo: ${s.prazo} · ${dias} dias</span>
+                        ${s.areas && s.areas.length ? '<span class="sonda-areas">' + s.areas.join(' · ') + '</span>' : ''}
+                    </div>
+                    ${s.descricao ? '<div class="sonda-desc">' + s.descricao + '</div>' : ''}
+                    ${s.conexao ? '<div class="sonda-conexao">' + s.conexao + '</div>' : ''}
+                    <div class="sonda-btns">
+                        ${btnPreparar}
+                        <button class="sonda-btn sonda-btn-enviada" onclick="marcarEnviada('${s.id}')">Enviada ✓</button>
+                        <button class="sonda-btn sonda-btn-rejeitar" onclick="rejeitarSonda('${s.id}')">Rejeitar</button>
+                        ${urlLink}
+                    </div>`;
+                list.appendChild(card);
+            });
+        }
+        window.ativarSonda = function(id) {
+            const s = sondasData.find(x => x.id === id);
+            if (s) { s.status = 'ativa'; saveSondas(); renderSondasDialog(); }
+        };
+        window.marcarEnviada = function(id) {
+            const s = sondasData.find(x => x.id === id);
+            if (s) { s.status = 'enviada'; saveSondas(); renderSondasDialog(); render(); }
+        };
+        window.rejeitarSonda = function(id) {
+            sondasData = sondasData.filter(x => x.id !== id);
+            saveSondas(); renderSondasDialog(); render();
+        };
+
         function buildSiloMenu() {
             const menu=document.getElementById("silo-menu"); menu.innerHTML="";
             SILOS.forEach((s,i)=>{
@@ -796,7 +935,7 @@
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) window.sendAI();
         });
 
-        buildSiloMenu(); buildSimulation(); render();
+        buildSiloMenu(); buildSimulation(); render(); loadSondas();
         document.getElementById("conjunto-btn").classList.add("armed");
         if (recoveredNote) {
             setSaveState("error", "Dados recuperados de cópia");
